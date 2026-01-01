@@ -160,16 +160,6 @@ Or use online QR code generators like:
 - https://www.qr-code-generator.com/
 - https://www.the-qrcode-generator.com/
 
-## Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `IBM_API_KEY` | IBM Cloud API key for authentication | Required |
-| `POLICY_ID` | Guardrails policy ID | `4af9a4b1-6801-440e-8f81-5254221915cc` |
-| `INVENTORY_ID` | Inventory ID | `a65bc085-8137-4293-b505-ac682c99da35` |
-| `GOVERNANCE_INSTANCE_ID` | Governance instance ID | `90e1f320-a1aa-4527-b4d9-1a9ad75d2182` |
-| `GUARDRAILS_API_URL` | API base URL | `https://api.aiopenscale.cloud.ibm.com` |
-
 ## Project Structure
 
 ```
