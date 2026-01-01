@@ -1,0 +1,42 @@
+[theme]
+# IBM Carbon Design - Base configuration
+primaryColor = "#0f62fe"
+font = "sans serif"
+
+# Dark theme (default) - IBM Carbon Dark
+[theme.dark]
+backgroundColor = "#161616"
+secondaryBackgroundColor = "#262626"
+textColor = "#f4f4f4"
+
+[theme.dark.sidebar]
+backgroundColor = "#262626"
+textColor = "#f4f4f4"
+
+# Light theme - IBM Carbon Light
+[theme.light]
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f4f4f4"
+textColor = "#161616"
+
+[theme.light.sidebar]
+backgroundColor = "#f4f4f4"
+textColor = "#161616"
+
+[server]
+headless = true
+enableCORS = false
+enableXsrfProtection = true
+maxUploadSize = 5
+port = 8501
+
+[browser]
+gatherUsageStats = false
+serverAddress = "0.0.0.0"
+
+[client]
+showErrorDetails = false
+toolbarMode = "viewer"
+
+[runner]
+fastReruns = true

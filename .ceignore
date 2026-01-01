@@ -1,0 +1,64 @@
+# IBM Code Engine ignore file
+# Similar to .gitignore - files/patterns to exclude from build
+
+# Environment and secrets
+.env
+.env.*
+*.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git
+.git/
+.gitignore
+
+# Test files
+test/
+tests/
+*_test.py
+test_*.py
+
+# Documentation (keep README and samples)
+*.md
+!README.md
+!samples/**/*.md
+
+# Docker files (Code Engine uses its own build)
+docker-compose*.yml
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Coverage reports
+htmlcov/
+.coverage
+.pytest_cache/
+
+# Jupyter notebooks
+*.ipynb
+.ipynb_checkpoints/
+
