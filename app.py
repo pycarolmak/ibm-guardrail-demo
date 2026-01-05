@@ -79,6 +79,7 @@ from guardrails_client import (
     get_default_config
 )
 from token_manager import TokenManager
+from translation_client import TranslationClient, TranslationResult
 
 # Page configuration
 st.set_page_config(
@@ -519,12 +520,26 @@ def render_sidebar():
         # Theme toggle
         st.markdown("## 🎨 Theme")
         is_dark_mode = st.toggle("🌙 Dark Mode", value=True, key="theme_toggle")
-        
+
         # Apply theme CSS based on toggle
         apply_theme_css(is_dark_mode)
-        
+
         st.markdown("---")
-        
+
+        # Multilingual Support Toggle
+        st.markdown("## 🌐 Language Support")
+        multilingual_enabled = st.toggle(
+            "Enable Multilingual Translation",
+            value=False,
+            key="multilingual_toggle",
+            help="Auto-detect non-English text and translate to English. Analyzes BOTH original and translated text."
+        )
+
+        if multilingual_enabled:
+            st.info("Text will be analyzed in both original language AND English translation. A detector triggers if either version flags content.")
+
+        st.markdown("---")
+
         st.markdown("## ⚙️ Configuration")
         
         # Direction selector
@@ -568,16 +583,27 @@ def render_sidebar():
                 placeholder="Enter governance instance ID (UUID)",
                 help="The governance instance ID"
             )
-            
+
+            # watsonx.ai Translation Settings
+            st.markdown("#### 🌐 Translation Settings")
+            watsonx_project_id = st.text_input(
+                "watsonx.ai Project ID",
+                value="",
+                placeholder="Enter watsonx.ai project ID (UUID)",
+                help="Required for multilingual translation feature"
+            )
+
             # Use custom values or fall back to defaults
             config = {
                 "api_key": api_key if api_key else defaults["api_key"],
                 "policy_id": policy_id if policy_id else defaults["policy_id"],
                 "inventory_id": inventory_id if inventory_id else defaults["inventory_id"],
-                "governance_instance_id": governance_id if governance_id else defaults["governance_instance_id"]
+                "governance_instance_id": governance_id if governance_id else defaults["governance_instance_id"],
+                "watsonx_project_id": watsonx_project_id if watsonx_project_id else os.getenv("WATSONX_PROJECT_ID", "")
             }
         else:
             config = defaults
+            config["watsonx_project_id"] = os.getenv("WATSONX_PROJECT_ID", "")
             st.info("ℹ️ Using default configuration from environment")
         
         st.markdown("---")
@@ -600,15 +626,15 @@ def render_sidebar():
         st.markdown("---")
         st.markdown("### About")
         st.markdown("""
-        This demo showcases IBM watsonx.governance 
+        This demo showcases IBM watsonx.governance
         Guardrails for enterprise AI safety.
-        
+
         [Learn more about watsonx AI Guardrails](https://dataplatform.cloud.ibm.com/docs/content/wsj/analyze-data/fm-hap.html?context=wx)
-        
+
         [🚀 Try it on HKSTP Open API Hub](https://hub.openapi.hkstp.org/en-us/p/ibm-watsonx-guardrail-2eaik/api/watsonx-guardrail-rtrjg/readme)
         """)
-        
-        return direction, config
+
+        return direction, config, multilingual_enabled
 
 
 def render_detector_selection(direction: str):
@@ -836,6 +862,179 @@ def render_individual_detector_results(text: str, results: list, raw_response: d
         st.warning("No raw response available")
 
 
+def render_multilingual_detector_results(
+    original_text: str,
+    translated_text: str,
+    source_language: str,
+    original_results: list,
+    translated_results: list,
+    original_raw: dict,
+    translated_raw: dict
+):
+    """
+    Render results from multilingual detector testing.
+    Shows combined status (triggered if either version triggers) with separate detailed records.
+    """
+
+    # Build a map of results by detector name for easy lookup
+    original_map = {r.name: r for r in original_results}
+    translated_map = {r.name: r for r in translated_results}
+
+    # Get all detector names
+    all_detectors = set(original_map.keys()) | set(translated_map.keys())
+
+    # Calculate combined violations (triggered if EITHER version triggers)
+    combined_violations = []
+    for name in all_detectors:
+        orig = original_map.get(name)
+        trans = translated_map.get(name)
+        orig_triggered = orig.detected if orig else False
+        trans_triggered = trans.detected if trans else False
+        if orig_triggered or trans_triggered:
+            combined_violations.append(name)
+
+    original_violations = [r for r in original_results if r.detected]
+    translated_violations = [r for r in translated_results if r.detected]
+
+    # Language Translation Display
+    st.markdown("### 🌐 Language Translation")
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown(f"**Original Text ({source_language}):**")
+        st.markdown(f"""
+        <div class="text-diff" style="padding: 1rem; border-radius: 8px; border-left: 4px solid #f1c21b; white-space: pre-wrap;">
+            {original_text}
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col2:
+        st.markdown("**Translated Text (English):**")
+        st.markdown(f"""
+        <div class="text-diff" style="padding: 1rem; border-radius: 8px; border-left: 4px solid #24a148; white-space: pre-wrap;">
+            {translated_text}
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # Summary metrics
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        if combined_violations:
+            st.metric("Overall Status", "🚫 BLOCKED", delta=f"{len(combined_violations)} triggered", delta_color="inverse")
+        else:
+            st.metric("Overall Status", "✅ Safe", delta="No Issues")
+
+    with col2:
+        st.metric("Detectors Tested", len(all_detectors))
+
+    with col3:
+        st.metric("Original Violations", len(original_violations), delta_color="inverse" if original_violations else "normal")
+
+    with col4:
+        st.metric("Translated Violations", len(translated_violations), delta_color="inverse" if translated_violations else "normal")
+
+    st.markdown("---")
+
+    # Combined Individual Detector Results
+    st.markdown("### 📊 Individual Detector Results (Combined)")
+    st.info("Each detector was tested on BOTH original and translated text. A detector is TRIGGERED if either version flags content.")
+
+    cols = st.columns(3)
+
+    for i, detector_name in enumerate(sorted(all_detectors)):
+        orig = original_map.get(detector_name)
+        trans = translated_map.get(detector_name)
+
+        orig_triggered = orig.detected if orig else False
+        trans_triggered = trans.detected if trans else False
+        combined_triggered = orig_triggered or trans_triggered
+
+        detector_info = INPUT_DETECTORS.get(detector_name) or OUTPUT_DETECTORS.get(detector_name) or {}
+        icon = detector_info.get("icon", "📋")
+        name = detector_info.get("name", detector_name.replace('_', ' ').title())
+
+        # Determine which version(s) triggered
+        trigger_info = []
+        if orig_triggered:
+            trigger_info.append("Original")
+        if trans_triggered:
+            trigger_info.append("Translated")
+        trigger_text = f" ({', '.join(trigger_info)})" if trigger_info else ""
+
+        with cols[i % 3]:
+            if combined_triggered:
+                st.markdown(f"""
+                <div class="detector-triggered">
+                    <strong>{icon} {name}</strong><br>
+                    <span class="status">🔴 TRIGGERED{trigger_text}</span><br>
+                    <small>Original: {'🔴' if orig_triggered else '🟢'} | Translated: {'🔴' if trans_triggered else '🟢'}</small>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div class="detector-passed">
+                    <strong>{icon} {name}</strong><br>
+                    <span class="status">🟢 Passed</span><br>
+                    <small>Original: 🟢 | Translated: 🟢</small>
+                </div>
+                """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # Detailed Results - Separate sections for Original and Translated
+    st.markdown("### 📋 Detailed Results")
+
+    # Original Text Analysis
+    with st.expander(f"📄 Original Text Analysis ({source_language}) - {len(original_violations)} violation(s)", expanded=len(original_violations) > 0):
+        st.markdown(f"**Analyzed Text:** {original_text[:200]}{'...' if len(original_text) > 200 else ''}")
+        st.markdown("---")
+
+        for detection in original_results:
+            detector_info = INPUT_DETECTORS.get(detection.name) or OUTPUT_DETECTORS.get(detection.name) or {}
+            icon = detector_info.get("icon", "📋")
+            name = detector_info.get("name", detection.name.replace('_', ' ').title())
+            status = "🔴 TRIGGERED" if detection.detected else "🟢 Passed"
+
+            st.markdown(f"**{icon} {name}:** {status}")
+            if detection.details and detection.detected:
+                st.json(detection.details)
+
+    # Translated Text Analysis
+    with st.expander(f"🌐 Translated Text Analysis (English) - {len(translated_violations)} violation(s)", expanded=len(translated_violations) > 0):
+        st.markdown(f"**Analyzed Text:** {translated_text[:200]}{'...' if len(translated_text) > 200 else ''}")
+        st.markdown("---")
+
+        for detection in translated_results:
+            detector_info = INPUT_DETECTORS.get(detection.name) or OUTPUT_DETECTORS.get(detection.name) or {}
+            icon = detector_info.get("icon", "📋")
+            name = detector_info.get("name", detection.name.replace('_', ' ').title())
+            status = "🔴 TRIGGERED" if detection.detected else "🟢 Passed"
+
+            st.markdown(f"**{icon} {name}:** {status}")
+            if detection.details and detection.detected:
+                st.json(detection.details)
+
+    st.markdown("---")
+
+    # Raw API Responses
+    st.markdown("### 🔧 Raw API Responses")
+
+    with st.expander("📄 Original Text API Calls", expanded=False):
+        if original_raw:
+            st.json(original_raw)
+        else:
+            st.warning("No raw response available")
+
+    with st.expander("🌐 Translated Text API Calls", expanded=False):
+        if translated_raw:
+            st.json(translated_raw)
+        else:
+            st.warning("No raw response available")
+
+
 def render_detection_results(result: GuardrailResult):
     """Render the detection results."""
     if not result.success:
@@ -933,7 +1132,7 @@ def main():
         st.session_state.sample_text = ""
     
     # Render sidebar and get config
-    direction, config = render_sidebar()
+    direction, config, multilingual_enabled = render_sidebar()
     
     render_header()
     
@@ -1050,41 +1249,103 @@ def main():
             )
             
             # Test each detector individually
-            with st.spinner(f"🔬 Testing {len(selected_detectors)} detectors individually..."):
-                try:
-                    dir_enum = Direction.INPUT if direction == "input" else Direction.OUTPUT
-                    
-                    # Inject global inputs into detectors that need them
-                    if direction == "input" and system_prompt_input.strip():
-                        for detector_key in ["topic_relevance", "prompt_safety_risk"]:
+            try:
+                dir_enum = Direction.INPUT if direction == "input" else Direction.OUTPUT
+
+                # Inject global inputs into detectors that need them
+                if direction == "input" and system_prompt_input.strip():
+                    for detector_key in ["topic_relevance", "prompt_safety_risk"]:
+                        if detector_key in selected_detectors:
+                            selected_detectors[detector_key]["system_prompt"] = system_prompt_input.strip()
+
+                if direction == "output":
+                    # Inject context for groundedness and context_relevance
+                    if context_input.strip():
+                        for detector_key in ["groundedness", "context_relevance"]:
                             if detector_key in selected_detectors:
-                                selected_detectors[detector_key]["system_prompt"] = system_prompt_input.strip()
-                    
-                    if direction == "output":
-                        # Inject context for groundedness and context_relevance
-                        if context_input.strip():
-                            for detector_key in ["groundedness", "context_relevance"]:
-                                if detector_key in selected_detectors:
-                                    selected_detectors[detector_key]["context"] = [context_input.strip()]
-                                    selected_detectors[detector_key]["context_type"] = "docs"
-                        
-                        # Inject user question for answer_relevance
-                        if user_question_input.strip():
-                            if "answer_relevance" in selected_detectors:
-                                selected_detectors["answer_relevance"]["prompt"] = user_question_input.strip()
-                    
-                    # Pass full dict with params, not just names
-                    individual_results, raw_response = client.test_detectors_individually(
-                        text_input,
-                        direction=dir_enum,
-                        selected_detectors=selected_detectors  # Pass dict with params
-                    )
-                    
-                    render_individual_detector_results(text_input, individual_results, raw_response)
-                    
-                except Exception as e:
-                    st.error(f"❌ An error occurred: {str(e)}")
-                    st.info("💡 Make sure your API configuration is correct.")
+                                selected_detectors[detector_key]["context"] = [context_input.strip()]
+                                selected_detectors[detector_key]["context_type"] = "docs"
+
+                    # Inject user question for answer_relevance
+                    if user_question_input.strip():
+                        if "answer_relevance" in selected_detectors:
+                            selected_detectors["answer_relevance"]["prompt"] = user_question_input.strip()
+
+                # Check if multilingual mode is enabled
+                if multilingual_enabled:
+                    # Step 1: Translate
+                    with st.spinner("🌐 Detecting language and translating..."):
+                        try:
+                            translation_client = TranslationClient(
+                                api_key=config["api_key"],
+                                project_id=config.get("watsonx_project_id")
+                            )
+                            translation_result = translation_client.detect_and_translate(text_input)
+
+                            if not translation_result.success:
+                                st.warning(f"Translation warning: {translation_result.error_message}. Proceeding with original text only.")
+                                # Fall back to single analysis
+                                with st.spinner(f"🔬 Testing {len(selected_detectors)} detectors..."):
+                                    individual_results, raw_response = client.test_detectors_individually(
+                                        text_input,
+                                        direction=dir_enum,
+                                        selected_detectors=selected_detectors
+                                    )
+                                    render_individual_detector_results(text_input, individual_results, raw_response)
+                            elif translation_result.is_english:
+                                st.info("Text is already in English - running single analysis.")
+                                with st.spinner(f"🔬 Testing {len(selected_detectors)} detectors..."):
+                                    individual_results, raw_response = client.test_detectors_individually(
+                                        text_input,
+                                        direction=dir_enum,
+                                        selected_detectors=selected_detectors
+                                    )
+                                    render_individual_detector_results(text_input, individual_results, raw_response)
+                            else:
+                                st.success(f"Detected: **{translation_result.source_language}** - Running dual analysis on both original and translated text.")
+
+                                # Step 2: Run detectors on BOTH versions
+                                with st.spinner(f"🔬 Testing {len(selected_detectors)} detectors on original text..."):
+                                    original_results, original_raw = client.test_detectors_individually(
+                                        text_input,
+                                        direction=dir_enum,
+                                        selected_detectors=selected_detectors
+                                    )
+
+                                with st.spinner(f"🔬 Testing {len(selected_detectors)} detectors on translated text..."):
+                                    translated_results, translated_raw = client.test_detectors_individually(
+                                        translation_result.translated_text,
+                                        direction=dir_enum,
+                                        selected_detectors=selected_detectors
+                                    )
+
+                                # Step 3: Render combined results
+                                render_multilingual_detector_results(
+                                    original_text=text_input,
+                                    translated_text=translation_result.translated_text,
+                                    source_language=translation_result.source_language,
+                                    original_results=original_results,
+                                    translated_results=translated_results,
+                                    original_raw=original_raw,
+                                    translated_raw=translated_raw
+                                )
+
+                        except ValueError as e:
+                            st.error(f"Translation setup error: {str(e)}")
+                            st.info("💡 Make sure WATSONX_PROJECT_ID is set in your .env file.")
+                else:
+                    # Standard single analysis (no translation)
+                    with st.spinner(f"🔬 Testing {len(selected_detectors)} detectors individually..."):
+                        individual_results, raw_response = client.test_detectors_individually(
+                            text_input,
+                            direction=dir_enum,
+                            selected_detectors=selected_detectors
+                        )
+                        render_individual_detector_results(text_input, individual_results, raw_response)
+
+            except Exception as e:
+                st.error(f"❌ An error occurred: {str(e)}")
+                st.info("💡 Make sure your API configuration is correct.")
     
     elif analyze_clicked and not text_input:
         st.warning("⚠️ Please enter some text to analyze.")
