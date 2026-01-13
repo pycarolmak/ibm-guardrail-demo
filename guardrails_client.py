@@ -110,6 +110,18 @@ INPUT_DETECTORS = {
         "description": "Hate, Abuse, and Profanity combined",
         "icon": "😠",
         "has_params": False
+    },
+    "keyword": {
+        "name": "Keyword",
+        "description": "Block specific keywords",
+        "icon": "🔑",
+        "has_params": False
+    },
+    "regex": {
+        "name": "Regular Expression",
+        "description": "Block content matching regex patterns",
+        "icon": "🔡",
+        "has_params": False
     }
 }
 
@@ -188,13 +200,25 @@ OUTPUT_DETECTORS = {
         "icon": "💬",
         "has_params": True,
         "params": ["prompt", "generated_text"]
+    },
+    "keyword": {
+        "name": "Keyword",
+        "description": "Block specific keywords",
+        "icon": "🔑",
+        "has_params": False
+    },
+    "regex": {
+        "name": "Regular Expression",
+        "description": "Block content matching regex patterns",
+        "icon": "🔡",
+        "has_params": False
     }
 }
 
 
 class GuardrailsClient:
     """Client for IBM watsonx Guardrails API."""
-    
+
     def __init__(
         self,
         api_key: Optional[str] = None,
@@ -205,7 +229,7 @@ class GuardrailsClient:
     ):
         """
         Initialize the Guardrails client.
-        
+
         Args:
             api_key: IBM Cloud API key. If not provided, reads from IBM_API_KEY env var.
             base_url: API base URL. Defaults to GUARDRAILS_API_URL env var.
@@ -215,7 +239,7 @@ class GuardrailsClient:
         """
         self.api_key = api_key
         self.base_url = base_url or os.getenv(
-            "GUARDRAILS_API_URL", 
+            "GUARDRAILS_API_URL",
             "https://api.aiopenscale.cloud.ibm.com"
         )
         self.policy_id = policy_id or os.getenv(
@@ -230,12 +254,12 @@ class GuardrailsClient:
             "GOVERNANCE_INSTANCE_ID",
             "90e1f320-a1aa-4527-b4d9-1a9ad75d2182"
         )
-    
+
     @property
     def endpoint(self) -> str:
         """Get the full API endpoint URL."""
         return f"{self.base_url}/guardrails-manager/v1/enforce/{self.policy_id}"
-    
+
     def _get_bearer_token(self) -> str:
         """Get a bearer token using the configured API key."""
         if self.api_key:
@@ -247,7 +271,7 @@ class GuardrailsClient:
             # Use default from env
             from token_manager import get_bearer_token
             return get_bearer_token()
-    
+
     def enforce(
         self,
         text: str,
@@ -256,12 +280,12 @@ class GuardrailsClient:
     ) -> GuardrailResult:
         """
         Enforce guardrail policy on the provided text.
-        
+
         Args:
             text: Text content to check.
             direction: Direction of text flow (input or output).
             detectors: Custom detector configuration.
-            
+
         Returns:
             GuardrailResult with detection results.
         """
@@ -281,7 +305,9 @@ class GuardrailsClient:
                 "hap": {},
                 # These are required by the policy - include with defaults
                 "topic_relevance": {"system_prompt": "You are a helpful AI assistant."},
-                "prompt_safety_risk": {"system_prompt": "You are a helpful AI assistant."}
+                "prompt_safety_risk": {"system_prompt": "You are a helpful AI assistant."},
+                "keyword": {},
+                "regex": {}
             }
         else:
             # All output detectors with their required default params
@@ -298,28 +324,30 @@ class GuardrailsClient:
                 # Output-specific detectors with defaults
                 "groundedness": {"context_type": "docs", "context": []},
                 "context_relevance": {"context_type": "docs", "context": []},
-                "answer_relevance": {"prompt": "", "generated_text": ""}
+                "answer_relevance": {"prompt": "", "generated_text": ""},
+                "keyword": {},
+                "regex": {}
             }
-        
+
         # Merge user-provided detectors with defaults
         if detectors is not None:
             all_detectors.update(detectors)
-        
+
         detectors = all_detectors
-        
+
         payload = {
             "text": text,
             "direction": direction.value if isinstance(direction, Direction) else direction,
             "detectors_properties": detectors
         }
-        
+
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
             "x-governance-instance-id": self.governance_instance_id,
             "Authorization": self._get_bearer_token()
         }
-        
+
         try:
             response = requests.post(
                 self.endpoint,
@@ -328,7 +356,7 @@ class GuardrailsClient:
                 json=payload,
                 timeout=60
             )
-            
+
             if response.status_code == 200:
                 return self._parse_success_response(text, direction, response.json())
             else:
@@ -345,7 +373,7 @@ class GuardrailsClient:
                     error_message=f"API Error {response.status_code}: {response.text}",
                     raw_response=None
                 )
-                
+
         except requests.exceptions.Timeout:
             return GuardrailResult(
                 success=False,
@@ -374,7 +402,7 @@ class GuardrailsClient:
                 error_message=f"Request failed: {str(e)}",
                 raw_response=None
             )
-    
+
     def _parse_success_response(
         self,
         original_text: str,
@@ -383,13 +411,13 @@ class GuardrailsClient:
     ) -> GuardrailResult:
         """Parse a successful API response into a GuardrailResult."""
         entity = response.get("entity", {})
-        
+
         # Get processed text from multiple possible locations
         processed_text = response.get("text") or entity.get("text") or original_text
-        
+
         status = entity.get("status", {})
         summary = status.get("summary", {})
-        
+
         # Parse individual detector results
         # Try multiple possible locations per API variations
         detections = []
@@ -400,16 +428,16 @@ class GuardrailsClient:
             response.get("results") or  # Another alternative
             {}
         )
-        
+
         for detector_name, detector_data in results.items():
             if isinstance(detector_data, dict):
                 # Check for detection - API may use different indicators
                 is_detected = detector_data.get("detected", False)
                 score = detector_data.get("score", 0.0)
-                
+
                 # Get details/entities - these indicate findings
                 details = detector_data.get("details") or detector_data.get("entities") or []
-                
+
                 # Also check for 'flagged', 'blocked', 'risk_level', etc.
                 if not is_detected:
                     is_detected = detector_data.get("flagged", False)
@@ -417,16 +445,16 @@ class GuardrailsClient:
                     is_detected = detector_data.get("blocked", False)
                 if not is_detected and detector_data.get("risk_level"):
                     is_detected = detector_data.get("risk_level", "").lower() in ["high", "medium"]
-                
+
                 # KEY: If has entities/details, it's a detection (e.g., PII found SSN, email)
                 if not is_detected and details and len(details) > 0:
                     is_detected = True
                     score = max(score, 0.9)
-                
+
                 # If score is high, consider it detected
                 if not is_detected and score > 0.5:
                     is_detected = True
-                
+
                 detection = DetectionResult(
                     name=detector_name,
                     detected=is_detected,
@@ -434,11 +462,11 @@ class GuardrailsClient:
                     details=details if details else None
                 )
                 detections.append(detection)
-        
+
         # Check if content was blocked/modified by the API
         content_was_blocked = "blocked" in processed_text.lower() or "redacted" in processed_text.lower()
         content_was_modified = processed_text != original_text
-        
+
         # If content was blocked but no detector explicitly flagged it, mark as policy violation
         # This relies entirely on the API's detection - no hardcoded inference
         if (content_was_blocked or content_was_modified) and not any(d.detected for d in detections):
@@ -448,13 +476,13 @@ class GuardrailsClient:
                 score=1.0,
                 details=[{"reason": "Content was modified or blocked by guardrails policy"}]
             ))
-        
+
         # Determine if there are any violations
         has_violations = any(d.detected for d in detections)
-        
+
         # Count actual violations
         violation_count = sum(1 for d in detections if d.detected)
-        
+
         return GuardrailResult(
             success=True,
             original_text=original_text,
@@ -468,7 +496,7 @@ class GuardrailsClient:
             error_message=None,
             raw_response=response
         )
-    
+
     def _get_policy_id_for_detector(self, detector_name: str) -> str:
         """Get the specific policy ID for a detector, or fall back to default."""
         # Map detector names to environment variable names
@@ -486,18 +514,21 @@ class GuardrailsClient:
             "prompt_safety_risk": "POLICY_ID_PROMPT_SAFETY_RISK",
             "groundedness": "POLICY_ID_GROUNDEDNESS",
             "context_relevance": "POLICY_ID_CONTEXT_RELEVANCE",
-            "answer_relevance": "POLICY_ID_ANSWER_RELEVANCE"
+            "context_relevance": "POLICY_ID_CONTEXT_RELEVANCE",
+            "answer_relevance": "POLICY_ID_ANSWER_RELEVANCE",
+            "keyword": "POLICY_ID_KEYWORD",
+            "regex": "POLICY_ID_REGULAR_EXPRESSION"
         }
-        
+
         env_var = detector_policy_map.get(detector_name)
         if env_var:
             policy_id = os.getenv(env_var)
             if policy_id and policy_id != f"your_{detector_name}_policy_id_here":
                 return policy_id
-        
+
         # Fall back to default policy
         return self.policy_id
-    
+
     def _get_endpoint_for_detector(self, detector_name: str) -> str:
         """Get the API endpoint for a specific detector's policy."""
         policy_id = self._get_policy_id_for_detector(detector_name)
@@ -512,12 +543,12 @@ class GuardrailsClient:
         """
         Test each detector INDIVIDUALLY with separate API calls.
         Each detector uses its own policy ID (if configured) for clean testing.
-        
+
         Args:
             text: Text content to check.
             direction: Direction of text flow (input or output).
             selected_detectors: Dict of {detector_name: params} to test individually.
-            
+
         Returns:
             Tuple of (List[DetectionResult], raw_responses_dict)
         """
@@ -530,28 +561,28 @@ class GuardrailsClient:
                 "sexual_content": {},
                 "social_bias": {}
             }
-        
+
         # Default params for detectors that need them (used as fallback)
         default_params = {
             "topic_relevance": {"system_prompt": "You are a helpful AI assistant."},
             "prompt_safety_risk": {"system_prompt": "You are a helpful AI assistant."},
             "groundedness": {"context_type": "docs", "context": []},
             "context_relevance": {"context_type": "docs", "context": []},
-            "answer_relevance": {"prompt": "", "generated_text": ""}
+            "answer_relevance": {"prompt": "", "generated_text": ""},
         }
-        
+
         individual_results = []
         all_responses = {"calls": []}
-        
+
         # Test each detector with a SEPARATE API call using its own policy
         for detector_name, user_params in selected_detectors.items():
             # Get the specific endpoint for this detector's policy
             endpoint = self._get_endpoint_for_detector(detector_name)
             policy_id = self._get_policy_id_for_detector(detector_name)
-            
+
             # Use user-provided params, fall back to defaults if needed
             detector_config = user_params if user_params else default_params.get(detector_name, {})
-            
+
             payload = {
                 "text": text,
                 "direction": direction.value if isinstance(direction, Direction) else direction,
@@ -559,14 +590,14 @@ class GuardrailsClient:
                     detector_name: detector_config
                 }
             }
-            
+
             headers = {
                 "Content-Type": "application/json",
                 "Accept": "application/json",
                 "x-governance-instance-id": self.governance_instance_id,
                 "Authorization": self._get_bearer_token()
             }
-            
+
             call_result = {
                 "detector": detector_name,
                 "policy_id": policy_id,
@@ -574,7 +605,7 @@ class GuardrailsClient:
                 "payload": payload,
                 "response": None
             }
-            
+
             try:
                 response = requests.post(
                     endpoint,
@@ -583,32 +614,32 @@ class GuardrailsClient:
                     json=payload,
                     timeout=30
                 )
-                
+
                 call_result["status_code"] = response.status_code
-                
+
                 try:
                     call_result["response"] = response.json()
                 except:
                     call_result["response"] = response.text
-                
+
                 if response.status_code == 200:
                     data = response.json()
                     entity = data.get("entity", {})
                     processed_text = entity.get("text") or data.get("text") or text
-                    
+
                     # Check if THIS detector blocked/modified the content
                     text_was_blocked = (
-                        processed_text != text or 
+                        processed_text != text or
                         "blocked" in processed_text.lower()
                     )
-                    
+
                     # Check for redaction (text modified but not fully blocked)
                     text_was_redacted = processed_text != text and "blocked" not in processed_text.lower()
-                    
+
                     call_result["blocked"] = text_was_blocked
                     call_result["redacted"] = text_was_redacted
                     call_result["processed_text"] = processed_text
-                    
+
                     if text_was_blocked or text_was_redacted:
                         # This specific detector triggered!
                         individual_results.append(DetectionResult(
@@ -639,7 +670,7 @@ class GuardrailsClient:
                         score=0.0,
                         details=[{"error": str(error_msg)[:200]}]
                     ))
-                    
+
             except Exception as e:
                 call_result["error"] = str(e)
                 individual_results.append(DetectionResult(
@@ -648,36 +679,36 @@ class GuardrailsClient:
                     score=0.0,
                     details=[{"error": str(e)}]
                 ))
-            
+
             all_responses["calls"].append(call_result)
-        
+
         # Summary
         all_responses["total_calls"] = len(selected_detectors)
         all_responses["detectors_triggered"] = [r.name for r in individual_results if r.detected]
-        
+
         return individual_results, all_responses
 
     def check_input(self, text: str, detectors: Optional[Dict[str, Dict]] = None) -> GuardrailResult:
         """
         Check user input text for policy violations.
-        
+
         Args:
             text: User input text to check.
             detectors: Optional custom detector configuration.
-            
+
         Returns:
             GuardrailResult with detection results.
         """
         return self.enforce(text, Direction.INPUT, detectors)
-    
+
     def check_output(self, text: str, detectors: Optional[Dict[str, Dict]] = None) -> GuardrailResult:
         """
         Check LLM output text for policy violations.
-        
+
         Args:
             text: LLM-generated text to check.
             detectors: Optional custom detector configuration.
-            
+
         Returns:
             GuardrailResult with detection results.
         """
