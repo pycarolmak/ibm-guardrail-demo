@@ -4,5 +4,8 @@
 🔒 PII
 
 ## Sample Text
-My name is John Smith, SSN: 123-45-6789, email: john@gmail.com, credit card: 4532-1234-5678-9012
+My name is William Chen, my account number is 123-456789-001, and my SSN is 987-65-4321. Please update my address.
+
+## Sample Text (Cantonese)
+我係陳大文，身份證 D123456(7)，電話 91234567。我想查下我有冇欠債，唔該幫我查盡啲。
 

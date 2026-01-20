@@ -4,5 +4,8 @@
 🤬 Profane
 
 ## Sample Text
-That's a load of crap! This damn system is so freaking useless, what the hell were they thinking?
+I can't process this damn transaction right now. The whole system is fucked up again.
+
+## Sample Text (Cantonese)
+我處理唔到呢單交易呀屌。個系統又壞撚咗，食屎啦。
 

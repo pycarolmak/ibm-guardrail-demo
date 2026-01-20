@@ -4,7 +4,10 @@
 📋 Off-Topic
 
 ## Sample Text
-Speaking of quarterly reports, did you know that penguins can hold their breath for 20 minutes underwater?
+Can you give me a recipe for a chocolate cake?
+
+## Sample Text (Cantonese)
+我想問去日本旅行有咩好食推介？有無邊間壽司最正？
 
 ## Detector Settings
 detector: topic_relevance

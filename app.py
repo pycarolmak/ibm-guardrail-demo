@@ -41,6 +41,12 @@ def load_samples_from_folder(folder_path: str) -> dict:
             if text_match:
                 sample_data["text"] = text_match.group(1).strip()
 
+            # Extract Cantonese sample text
+            cantonese_match = re.search(r"## Sample Text \(Cantonese\)\s*\n(.+?)(?=\n## |\Z)", content, re.DOTALL)
+            if cantonese_match:
+                sample_data["text_cantonese"] = cantonese_match.group(1).strip()
+
+
             # Extract detector (if specified)
             detector_match = re.search(r"detector:\s*(\w+)", content)
             if detector_match:
@@ -528,6 +534,16 @@ def render_sidebar():
 
         # Multilingual Support Toggle
         st.markdown("## 🌐 Language Support")
+        
+        # Sample Language Selection
+        sample_language = st.radio(
+            "Sample Text Language",
+            options=["English", "Cantonese"],
+            index=0,
+            horizontal=True,
+            help="Select the language for the sample text buttons."
+        )
+        
         multilingual_enabled = st.toggle(
             "Enable Multilingual Translation",
             value=False,
@@ -634,7 +650,7 @@ def render_sidebar():
         [🚀 Try it on HKSTP Open API Hub](https://hub.openapi.hkstp.org/en-us/p/ibm-watsonx-guardrail-2eaik/api/watsonx-guardrail-rtrjg/readme)
         """)
 
-        return direction, config, multilingual_enabled
+        return direction, config, multilingual_enabled, sample_language
 
 
 def render_detector_selection(direction: str):
@@ -688,7 +704,7 @@ def render_detector_selection(direction: str):
     return selected_detectors
 
 
-def render_sample_texts(direction: str):
+def render_sample_texts(direction: str, language: str = "English"):
     """Render sample text buttons based on direction - loads from markdown files."""
     st.markdown("### 📝 Try Sample Texts")
     st.caption("Click any sample to test different detectors (edit samples in /samples folder)")
@@ -714,7 +730,11 @@ def render_sample_texts(direction: str):
 
     def set_sample(sample_data):
         """Set sample text and optionally enable detector with system prompt."""
-        text = sample_data.get("text", "")
+        if language == "Cantonese" and "text_cantonese" in sample_data:
+            text = sample_data.get("text_cantonese", "")
+        else:
+            text = sample_data.get("text", "")
+            
         st.session_state.sample_text = text
         st.session_state.text_to_analyze = text
 
@@ -1132,7 +1152,7 @@ def main():
         st.session_state.sample_text = ""
 
     # Render sidebar and get config
-    direction, config, multilingual_enabled = render_sidebar()
+    direction, config, multilingual_enabled, language = render_sidebar()
 
     render_header()
 
@@ -1140,7 +1160,7 @@ def main():
     st.markdown("## 🔍 Test Content Moderation")
 
     # Sample text buttons (set session_state.sample_text via callback)
-    render_sample_texts(direction)
+    render_sample_texts(direction, language)
 
     st.markdown("---")
 

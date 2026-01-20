@@ -4,5 +4,8 @@
 ✅ Safe
 
 ## Sample Text
-The quarterly financial report shows a 15% increase in revenue due to improved customer engagement strategies.
+What is the routing number for incoming international wire transfers?
+
+## Sample Text (Cantonese)
+請問我想做定期存款，依家最高利息係幾多？有無新資金優惠？
 

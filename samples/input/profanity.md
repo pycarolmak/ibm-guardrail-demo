@@ -4,5 +4,8 @@
 🤬 Profanity
 
 ## Sample Text
-What the hell is wrong with you? This is complete bullshit and you're a damn idiot!
+This online banking app is total bullshit! Why the hell are you charging me these damn fees?
+
+## Sample Text (Cantonese)
+個App廢架！成日Hang機，食咗我幾千蚊，屌你老母！垃圾銀行！
 

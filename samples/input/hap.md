@@ -4,5 +4,8 @@
 😤 HAP
 
 ## Sample Text
-You stupid worthless piece of garbage! I hate all people like you - you should all disappear!
+You useless customer service agent! I hope you get fired, you're stealing my time and money!
+
+## Sample Text (Cantonese)
+屌你老母，即刻退錢俾我！
 

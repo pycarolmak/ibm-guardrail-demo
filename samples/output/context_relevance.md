@@ -4,11 +4,15 @@
 📄 Wrong Context
 
 ## Sample Text
-Based on the documents provided, the current stock price is $150 per share.
+## Sample Text
+The bank's total assets under management increased by 10% this fiscal year.
+
+## Sample Text (Cantonese)
+銀行嘅總資產喺呢個財政年度增加咗 10%。
 
 ## Detector Settings
 detector: context_relevance
 
 ## Context
-Medieval History: The Black Death swept through Europe in the 14th century. Knights were the elite warriors of feudal society.
+The majestic Eagle soars high above the mountains, searching for prey. Its eyesight is eight times sharper than a human's.
 

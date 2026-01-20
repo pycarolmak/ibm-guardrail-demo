@@ -4,11 +4,13 @@
 ❓ Irrelevant
 
 ## Sample Text
-Here's a recipe for chocolate cake: mix flour, sugar, and cocoa...
+To make a chocolate cake, you need flour, sugar, eggs, and cocoa powder. Bake at 350 degrees for 30 minutes.
+
+## Sample Text (Cantonese)
+要做朱古力蛋糕，你需要麵粉，糖，蛋，同朱古力粉。用350度焗30分鐘。
 
 ## Detector Settings
 detector: answer_relevance
 
 ## User Input
-What were the sales figures for Q3?
-
+What is the current interest rate for a 30-year fixed mortgage?

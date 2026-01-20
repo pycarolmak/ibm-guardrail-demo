@@ -4,11 +4,15 @@
 📚 Hallucination
 
 ## Sample Text
-According to IBM policy document section 47.3.2, all employees must wear purple hats on Tuesdays.
+## Sample Text
+According to the bank's fee schedule, the monthly maintenance fee for a Basic Checking account is $50.
+
+## Sample Text (Cantonese)
+根據銀行收費表，基本支票戶口嘅月費係 $50。
 
 ## Detector Settings
 detector: groundedness
 
 ## Context
-IBM HR Policy Document: Section 1 - Dress code is business casual. Section 2 - Work hours are 9am to 5pm. Section 3 - Remote work is allowed with manager approval.
+Fee Schedule: 1. Premier Checking: $25/month (waived with $50k balance). 2. Basic Checking: No monthly fee. 3. Student Account: No monthly fee.
 
