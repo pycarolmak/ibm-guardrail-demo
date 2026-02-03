@@ -882,178 +882,6 @@ def render_individual_detector_results(text: str, results: list, raw_response: d
         st.warning("No raw response available")
 
 
-def render_multilingual_detector_results(
-    original_text: str,
-    translated_text: str,
-    source_language: str,
-    original_results: list,
-    translated_results: list,
-    original_raw: dict,
-    translated_raw: dict
-):
-    """
-    Render results from multilingual detector testing.
-    Shows combined status (triggered if either version triggers) with separate detailed records.
-    """
-
-    # Build a map of results by detector name for easy lookup
-    original_map = {r.name: r for r in original_results}
-    translated_map = {r.name: r for r in translated_results}
-
-    # Get all detector names
-    all_detectors = set(original_map.keys()) | set(translated_map.keys())
-
-    # Calculate combined violations (triggered if EITHER version triggers)
-    combined_violations = []
-    for name in all_detectors:
-        orig = original_map.get(name)
-        trans = translated_map.get(name)
-        orig_triggered = orig.detected if orig else False
-        trans_triggered = trans.detected if trans else False
-        if orig_triggered or trans_triggered:
-            combined_violations.append(name)
-
-    original_violations = [r for r in original_results if r.detected]
-    translated_violations = [r for r in translated_results if r.detected]
-
-    # Language Translation Display
-    st.markdown("### 🌐 Language Translation")
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.markdown(f"**Original Text ({source_language}):**")
-        st.markdown(f"""
-        <div class="text-diff" style="padding: 1rem; border-radius: 8px; border-left: 4px solid #f1c21b; white-space: pre-wrap;">
-            {original_text}
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col2:
-        st.markdown("**Translated Text (English):**")
-        st.markdown(f"""
-        <div class="text-diff" style="padding: 1rem; border-radius: 8px; border-left: 4px solid #24a148; white-space: pre-wrap;">
-            {translated_text}
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown("---")
-
-    # Summary metrics
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        if combined_violations:
-            st.metric("Overall Status", "🚫 BLOCKED", delta=f"{len(combined_violations)} triggered", delta_color="inverse")
-        else:
-            st.metric("Overall Status", "✅ Safe", delta="No Issues")
-
-    with col2:
-        st.metric("Detectors Tested", len(all_detectors))
-
-    with col3:
-        st.metric("Original Violations", len(original_violations), delta_color="inverse" if original_violations else "normal")
-
-    with col4:
-        st.metric("Translated Violations", len(translated_violations), delta_color="inverse" if translated_violations else "normal")
-
-    st.markdown("---")
-
-    # Combined Individual Detector Results
-    st.markdown("### 📊 Individual Detector Results (Combined)")
-    st.info("Each detector was tested on BOTH original and translated text. A detector is TRIGGERED if either version flags content.")
-
-    cols = st.columns(3)
-
-    for i, detector_name in enumerate(sorted(all_detectors)):
-        orig = original_map.get(detector_name)
-        trans = translated_map.get(detector_name)
-
-        orig_triggered = orig.detected if orig else False
-        trans_triggered = trans.detected if trans else False
-        combined_triggered = orig_triggered or trans_triggered
-
-        detector_info = INPUT_DETECTORS.get(detector_name) or OUTPUT_DETECTORS.get(detector_name) or {}
-        icon = detector_info.get("icon", "📋")
-        name = detector_info.get("name", detector_name.replace('_', ' ').title())
-
-        # Determine which version(s) triggered
-        trigger_info = []
-        if orig_triggered:
-            trigger_info.append("Original")
-        if trans_triggered:
-            trigger_info.append("Translated")
-        trigger_text = f" ({', '.join(trigger_info)})" if trigger_info else ""
-
-        with cols[i % 3]:
-            if combined_triggered:
-                st.markdown(f"""
-                <div class="detector-triggered">
-                    <strong>{icon} {name}</strong><br>
-                    <span class="status">🔴 TRIGGERED{trigger_text}</span><br>
-                    <small>Original: {'🔴' if orig_triggered else '🟢'} | Translated: {'🔴' if trans_triggered else '🟢'}</small>
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.markdown(f"""
-                <div class="detector-passed">
-                    <strong>{icon} {name}</strong><br>
-                    <span class="status">🟢 Passed</span><br>
-                    <small>Original: 🟢 | Translated: 🟢</small>
-                </div>
-                """, unsafe_allow_html=True)
-
-    st.markdown("---")
-
-    # Detailed Results - Separate sections for Original and Translated
-    st.markdown("### 📋 Detailed Results")
-
-    # Original Text Analysis
-    with st.expander(f"📄 Original Text Analysis ({source_language}) - {len(original_violations)} violation(s)", expanded=len(original_violations) > 0):
-        st.markdown(f"**Analyzed Text:** {original_text[:200]}{'...' if len(original_text) > 200 else ''}")
-        st.markdown("---")
-
-        for detection in original_results:
-            detector_info = INPUT_DETECTORS.get(detection.name) or OUTPUT_DETECTORS.get(detection.name) or {}
-            icon = detector_info.get("icon", "📋")
-            name = detector_info.get("name", detection.name.replace('_', ' ').title())
-            status = "🔴 TRIGGERED" if detection.detected else "🟢 Passed"
-
-            st.markdown(f"**{icon} {name}:** {status}")
-            if detection.details and detection.detected:
-                st.json(detection.details)
-
-    # Translated Text Analysis
-    with st.expander(f"🌐 Translated Text Analysis (English) - {len(translated_violations)} violation(s)", expanded=len(translated_violations) > 0):
-        st.markdown(f"**Analyzed Text:** {translated_text[:200]}{'...' if len(translated_text) > 200 else ''}")
-        st.markdown("---")
-
-        for detection in translated_results:
-            detector_info = INPUT_DETECTORS.get(detection.name) or OUTPUT_DETECTORS.get(detection.name) or {}
-            icon = detector_info.get("icon", "📋")
-            name = detector_info.get("name", detection.name.replace('_', ' ').title())
-            status = "🔴 TRIGGERED" if detection.detected else "🟢 Passed"
-
-            st.markdown(f"**{icon} {name}:** {status}")
-            if detection.details and detection.detected:
-                st.json(detection.details)
-
-    st.markdown("---")
-
-    # Raw API Responses
-    st.markdown("### 🔧 Raw API Responses")
-
-    with st.expander("📄 Original Text API Calls", expanded=False):
-        if original_raw:
-            st.json(original_raw)
-        else:
-            st.warning("No raw response available")
-
-    with st.expander("🌐 Translated Text API Calls", expanded=False):
-        if translated_raw:
-            st.json(translated_raw)
-        else:
-            st.warning("No raw response available")
-
 
 def render_detection_results(result: GuardrailResult):
     """Render the detection results."""
@@ -1313,7 +1141,8 @@ def main():
                                     )
                                     render_individual_detector_results(text_input, individual_results, raw_response)
                             elif translation_result.is_english:
-                                st.info("Text is already in English - running single analysis.")
+
+                                # User requested silent handling if already English
                                 with st.spinner(f"🔬 Testing {len(selected_detectors)} detectors..."):
                                     individual_results, raw_response = client.test_detectors_individually(
                                         text_input,
@@ -1322,33 +1151,22 @@ def main():
                                     )
                                     render_individual_detector_results(text_input, individual_results, raw_response)
                             else:
-                                st.success(f"Detected: **{translation_result.source_language}** - Running dual analysis on both original and translated text.")
+                                st.success(f"Detected: **{translation_result.source_language}** - Running analysis on translated text.")
+                                
+                                # Show translated text clearly to the user
+                                with st.expander("📄 View Translated Text (used for analysis)", expanded=True):
+                                    st.markdown(translation_result.translated_text)
 
-                                # Step 2: Run detectors on BOTH versions
-                                with st.spinner(f"🔬 Testing {len(selected_detectors)} detectors on original text..."):
-                                    original_results, original_raw = client.test_detectors_individually(
-                                        text_input,
-                                        direction=dir_enum,
-                                        selected_detectors=selected_detectors
-                                    )
-
+                                # Run analysis ONLY on translated text
                                 with st.spinner(f"🔬 Testing {len(selected_detectors)} detectors on translated text..."):
                                     translated_results, translated_raw = client.test_detectors_individually(
                                         translation_result.translated_text,
                                         direction=dir_enum,
                                         selected_detectors=selected_detectors
                                     )
-
-                                # Step 3: Render combined results
-                                render_multilingual_detector_results(
-                                    original_text=text_input,
-                                    translated_text=translation_result.translated_text,
-                                    source_language=translation_result.source_language,
-                                    original_results=original_results,
-                                    translated_results=translated_results,
-                                    original_raw=original_raw,
-                                    translated_raw=translated_raw
-                                )
+                                
+                                # Render results as if it were a normal single-text analysis
+                                render_individual_detector_results(translation_result.translated_text, translated_results, translated_raw)
 
                         except ValueError as e:
                             st.error(f"Translation setup error: {str(e)}")
