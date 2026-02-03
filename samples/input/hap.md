@@ -7,5 +7,5 @@
 You useless customer service agent! I hope you get fired, you're stealing my time and money!
 
 ## Sample Text (Cantonese)
-屌你老母，即刻退錢俾我！
+收皮啦你！講極都唔明，你係咪弱智㗎？即刻退錢俾我！
 
