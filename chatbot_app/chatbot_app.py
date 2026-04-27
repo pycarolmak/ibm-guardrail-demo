@@ -58,7 +58,10 @@ if "watsonx_project_id" not in st.session_state:
     st.session_state.watsonx_project_id = os.getenv("WATSONX_PROJECT_ID", "")
 
 if "selected_model" not in st.session_state:
-    st.session_state.selected_model = "Qwen/Qwen3.5-9B:together"
+    st.session_state.selected_model = "deepseek-ai/DeepSeek-V4-Pro:novita"
+
+if "processing_response" not in st.session_state:
+    st.session_state.processing_response = False
 
 
 def apply_custom_css():
@@ -174,8 +177,10 @@ def render_sidebar():
         
         # Available models
         available_models = {
-            "Qwen/Qwen3.5-9B:together": "Qwen 3.5 (9B)",
-            "deepseek-ai/DeepSeek-V4-Pro:novita": "DeepSeek V4 Pro"
+            # "Qwen/Qwen3.5-9B:fastest": "Qwen 3.5 (9B)",
+            "Qwen/Qwen3-8B:fireworks-ai": "Qwen 3 (8B)",
+            "deepseek-ai/DeepSeek-V4-Pro:novita": "DeepSeek V4 Pro (1.6T 49B)",
+            # "deepseek-ai/DeepSeek-V4-Flash:fastest": "DeepSeek V4 Flash",
         }
         
         selected_model = st.selectbox(
@@ -658,6 +663,14 @@ def render_chat_interface():
             st.session_state.messages.append(warning_message)
             st.rerun()
         
+        # Set flag to process response and rerun to show user message immediately
+        st.session_state.processing_response = True
+        st.rerun()
+    
+    # Process LLM response if flag is set
+    if st.session_state.processing_response:
+        st.session_state.processing_response = False
+        
         # Prepare messages for LLM
         llm_messages = [{"role": "system", "content": st.session_state.system_prompt}]
         for msg in st.session_state.messages:
@@ -671,16 +684,26 @@ def render_chat_interface():
         with st.spinner("🤔 Thinking..."):
             assistant_response = get_llm_response(llm_messages)
         
-        # Check output with guardrails
-        if not st.session_state.selected_output_detectors:
-            st.info("ℹ️ No output detectors selected. Response will not be checked.")
-        
-        output_check_result = check_text_with_guardrails(
-            assistant_response,
-            Direction.OUTPUT,
-            st.session_state.selected_output_detectors,
-            enable_translation=False  # Don't translate output
-        )
+        # Validate response is not empty
+        if not assistant_response or not assistant_response.strip():
+            assistant_response = "Error: Received empty response from the model. Please try again."
+            output_check_result = {
+                "success": False,
+                "error": "Empty response from LLM",
+                "detections": [],
+                "missing_policies": []
+            }
+        else:
+            # Check output with guardrails
+            if not st.session_state.selected_output_detectors:
+                st.info("ℹ️ No output detectors selected. Response will not be checked.")
+            
+            output_check_result = check_text_with_guardrails(
+                assistant_response,
+                Direction.OUTPUT,
+                st.session_state.selected_output_detectors,
+                enable_translation=False  # Don't translate output
+            )
         
         # Add assistant message to chat with metadata
         assistant_message = {
