@@ -34,10 +34,10 @@ if "system_prompt" not in st.session_state:
     st.session_state.system_prompt = "You are a helpful AI assistant."
 
 if "selected_input_detectors" not in st.session_state:
-    st.session_state.selected_input_detectors = ["pii", "harm", "jailbreak", "profanity"]
+    st.session_state.selected_input_detectors = ["topic_relevance", "prompt_safety_risk", "social_bias", "hap"]
 
 if "selected_output_detectors" not in st.session_state:
-    st.session_state.selected_output_detectors = ["pii", "harm", "profanity"]
+    st.session_state.selected_output_detectors = ["harm", "social_bias", "hap"]
 
 if "guardrails_client" not in st.session_state:
     st.session_state.guardrails_client = None
@@ -56,6 +56,9 @@ if "multilingual_enabled" not in st.session_state:
 
 if "watsonx_project_id" not in st.session_state:
     st.session_state.watsonx_project_id = os.getenv("WATSONX_PROJECT_ID", "")
+
+if "selected_model" not in st.session_state:
+    st.session_state.selected_model = "Qwen/Qwen3.5-9B:together"
 
 
 def apply_custom_css():
@@ -163,6 +166,28 @@ def render_sidebar():
             # Reinitialize guardrails client with new key
             if ibm_key:
                 st.session_state.guardrails_client = GuardrailsClient(api_key=ibm_key)
+        
+        st.divider()
+        
+        # Model Selection Section
+        st.subheader("🤖 Model Selection")
+        
+        # Available models
+        available_models = {
+            "Qwen/Qwen3.5-9B:together": "Qwen 3.5 (9B)",
+            "deepseek-ai/DeepSeek-V4-Pro:novita": "DeepSeek V4 Pro"
+        }
+        
+        selected_model = st.selectbox(
+            "Select Model",
+            options=list(available_models.keys()),
+            format_func=lambda x: available_models[x],
+            index=list(available_models.keys()).index(st.session_state.selected_model) if st.session_state.selected_model in available_models else 0,
+            help="Choose the HuggingFace model to use for chat responses"
+        )
+        
+        if selected_model != st.session_state.selected_model:
+            st.session_state.selected_model = selected_model
         
         st.divider()
         
@@ -449,9 +474,9 @@ def get_llm_response(messages: List[Dict]) -> str:
             base_url="https://router.huggingface.co/v1",
             api_key=st.session_state.hf_api_key,
         )
-        
+        print(st.session_state.selected_model)
         completion = client.chat.completions.create(
-            model="Qwen/Qwen3-8B:fireworks-ai",
+            model=st.session_state.selected_model,
             messages=messages,
             max_tokens=1000,
             temperature=0.7,

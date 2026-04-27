@@ -4,7 +4,8 @@ A chat application with IBM watsonx Guardrails integration for real-time content
 
 ## Features
 
-- 🤖 **AI Chat Interface**: Chat with HuggingFace LLM (Qwen/Qwen3-8B)
+- 🤖 **AI Chat Interface**: Chat with HuggingFace LLMs (Qwen 3.5 397B-A17B or DeepSeek V4 Pro)
+- 🔄 **Model Selection**: Choose between multiple AI models in the sidebar
 - 🛡️ **Input Guardrails**: Check user messages for policy violations before processing
 - 🔍 **Output Guardrails**: Validate AI responses before displaying to users
 - ⚙️ **Configurable Detectors**: Enable/disable specific detectors in the sidebar
@@ -58,10 +59,11 @@ A chat application with IBM watsonx Guardrails integration for real-time content
 ## Usage
 
 1. **Configure API Keys**: Enter your HuggingFace and IBM Cloud API keys in the sidebar
-2. **Set System Prompt**: Customize the AI's behavior using the system prompt field
-3. **Select Detectors**: Choose which guardrails to enable for input and output checking
-4. **Start Chatting**: Type messages in the chat input and interact with the AI
-5. **Monitor Detections**: View real-time alerts when detectors are triggered
+2. **Select Model**: Choose your preferred AI model (Qwen 3.5 397B-A17B or DeepSeek V4 Pro)
+3. **Set System Prompt**: Customize the AI's behavior using the system prompt field
+4. **Select Detectors**: Choose which guardrails to enable for input and output checking
+5. **Start Chatting**: Type messages in the chat input and interact with the AI
+6. **Monitor Detections**: View real-time alerts when detectors are triggered
 
 ## How It Works
 
@@ -122,7 +124,9 @@ Detection results are color-coded:
 
 ## Notes
 
-- The app uses the HuggingFace Inference API with the Qwen/Qwen3-8B model
+- The app uses the HuggingFace Inference API with selectable models:
+  - Qwen/Qwen3.5-397B-A17B:fireworks-ai (default)
+  - deepseek-ai/DeepSeek-V4-Pro:novita
 - Guardrails checks are performed using IBM watsonx Guardrails API
 - Each detector runs independently for accurate violation detection
 - Chat history is stored in session state and cleared on page refresh

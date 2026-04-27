@@ -21,7 +21,13 @@ In the sidebar, enter:
 - **HuggingFace API Key**: Get from https://huggingface.co/settings/tokens
 - **IBM Cloud API Key**: Get from IBM Cloud console
 
-### 3. Customize System Prompt
+### 3. Select Model
+
+Choose your preferred AI model from the dropdown:
+- **Qwen 3.5 (397B-A17B)**: Large-scale model with extensive capabilities (default)
+- **DeepSeek V4 Pro**: Alternative high-performance model
+
+### 4. Customize System Prompt
 
 Edit the system prompt to define AI behavior:
 ```
@@ -31,7 +37,7 @@ Examples:
 - "You are a friendly customer support agent."
 ```
 
-### 4. Select Detectors
+### 5. Select Detectors
 
 **Input Detectors** (check user messages):
 - Enable detectors to block harmful user input
@@ -41,7 +47,7 @@ Examples:
 - Enable detectors to validate AI responses
 - Recommended: PII, Harm, Profanity
 
-### 5. Start Chatting
+### 6. Start Chatting
 
 Type your message in the chat input and press Enter. The app will:
 1. Check your input with selected detectors
