@@ -13,9 +13,10 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-# Add parent directory to path to import guardrails_client
+# Add parent directory to path to import guardrails_client and translation_client
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from guardrails_client import GuardrailsClient, Direction, INPUT_DETECTORS, OUTPUT_DETECTORS
+from translation_client import TranslationClient
 
 # Page configuration
 st.set_page_config(
@@ -48,7 +49,13 @@ if "ibm_api_key" not in st.session_state:
     st.session_state.ibm_api_key = os.getenv("IBM_API_KEY", "")
 
 if "debug_mode" not in st.session_state:
-    st.session_state.debug_mode = False
+    st.session_state.debug_mode = True
+
+if "multilingual_enabled" not in st.session_state:
+    st.session_state.multilingual_enabled = True
+
+if "watsonx_project_id" not in st.session_state:
+    st.session_state.watsonx_project_id = os.getenv("WATSONX_PROJECT_ID", "")
 
 
 def apply_custom_css():
@@ -70,32 +77,29 @@ def apply_custom_css():
     }
     
     .user-message {
-        background-color: #e3f2fd;
-        border-left: 4px solid #2196f3;
     }
     
     .assistant-message {
-        background-color: #f5f5f5;
-        border-left: 4px solid #4caf50;
     }
     
     .detector-alert {
-        padding: 0.5rem;
-        border-radius: 0.3rem;
+        padding: 1rem;
+        border-radius: 0.5rem;
         margin-top: 0.5rem;
+        margin-bottom: 0.5rem;
         font-size: 0.9rem;
     }
     
     .detector-warning {
-        background-color: #fff3cd;
-        border-left: 3px solid #ffc107;
-        color: #856404;
+        background-color: #fff3cd !important;
+        border-left: 4px solid #ffc107 !important;
+        color: #856404 !important;
     }
     
     .detector-danger {
-        background-color: #f8d7da;
-        border-left: 3px solid #dc3545;
-        color: #721c24;
+        background-color: #f8d7da !important;
+        border-left: 4px solid #dc3545 !important;
+        color: #721c24 !important;
     }
     
     .detector-safe {
@@ -215,6 +219,29 @@ def render_sidebar():
         
         st.divider()
         
+        # Multilingual Support Section
+        st.subheader("🌐 Multilingual Support")
+        multilingual_enabled = st.checkbox(
+            "Enable Chinese-to-English Translation",
+            value=st.session_state.multilingual_enabled,
+            help="Automatically detect and translate Chinese text to English before guardrails check"
+        )
+        if multilingual_enabled != st.session_state.multilingual_enabled:
+            st.session_state.multilingual_enabled = multilingual_enabled
+        
+        if multilingual_enabled:
+            watsonx_project_id = st.text_input(
+                "watsonx.ai Project ID",
+                value=st.session_state.watsonx_project_id,
+                type="password",
+                help="Your watsonx.ai project ID for translation",
+                placeholder="Enter project ID or use .env file"
+            )
+            if watsonx_project_id != st.session_state.watsonx_project_id:
+                st.session_state.watsonx_project_id = watsonx_project_id
+        
+        st.divider()
+        
         # Debug mode toggle
         st.subheader("🔧 Debug")
         debug_mode = st.checkbox(
@@ -233,18 +260,49 @@ def render_sidebar():
             st.rerun()
 
 
-def check_text_with_guardrails(text: str, direction: Direction, detectors: List[str]) -> Dict:
+def check_text_with_guardrails(text: str, direction: Direction, detectors: List[str], enable_translation: bool = False) -> Dict:
     """
     Check text with selected guardrails detectors.
+    Optionally translates Chinese text to English before checking.
     
     Args:
         text: Text to check
         direction: INPUT or OUTPUT
         detectors: List of detector names to use
+        enable_translation: Whether to detect and translate Chinese text
     
     Returns:
-        Dictionary with detection results
+        Dictionary with detection results including translation info
     """
+    original_text = text
+    translated_text = None
+    source_language = None
+    translation_error = None
+    
+    # Step 1: Translation (if enabled)
+    if enable_translation and st.session_state.multilingual_enabled:
+        try:
+            if not st.session_state.watsonx_project_id:
+                translation_error = "watsonx.ai Project ID not configured"
+            else:
+                translation_client = TranslationClient(
+                    api_key=st.session_state.ibm_api_key,
+                    project_id=st.session_state.watsonx_project_id
+                )
+                translation_result = translation_client.detect_and_translate(text)
+                
+                if translation_result.success:
+                    source_language = translation_result.source_language
+                    if not translation_result.is_english:
+                        # Use translated text for guardrails check
+                        text = translation_result.translated_text
+                        translated_text = translation_result.translated_text
+                else:
+                    translation_error = translation_result.error_message
+        except Exception as e:
+            translation_error = str(e)
+    
+    # Step 2: Guardrails check (on translated text if available, otherwise original)
     if not st.session_state.guardrails_client:
         if st.session_state.ibm_api_key:
             st.session_state.guardrails_client = GuardrailsClient(
@@ -322,13 +380,21 @@ def check_text_with_guardrails(text: str, direction: Direction, detectors: List[
             "detections": individual_results,
             "raw_response": raw_response,
             "has_violations": any(d.detected for d in individual_results),
-            "missing_policies": missing_policies
+            "missing_policies": missing_policies,
+            "original_text": original_text,
+            "translated_text": translated_text,
+            "source_language": source_language,
+            "translation_error": translation_error
         }
     except Exception as e:
         return {
             "success": False,
             "error": str(e),
-            "detections": []
+            "detections": [],
+            "original_text": original_text,
+            "translated_text": translated_text,
+            "source_language": source_language,
+            "translation_error": translation_error
         }
 
 
@@ -336,38 +402,33 @@ def render_detection_results(detections: List, direction: str, total_selected: i
     """Render detection results as alerts."""
     # Show missing policy warnings first
     if missing_policies:
-        st.markdown(f"<div class='detector-alert detector-warning'>", unsafe_allow_html=True)
-        st.markdown(f"**⚠️ Missing or Invalid Policy IDs for {len(missing_policies)} detector(s):**")
+        content = f"**⚠️ Missing or Invalid Policy IDs for {len(missing_policies)} detector(s):**\n\n"
         for policy in missing_policies:
             detector_info = INPUT_DETECTORS.get(policy['detector']) or OUTPUT_DETECTORS.get(policy['detector'])
             icon = detector_info['icon'] if detector_info else "🔧"
             name = detector_info['name'] if detector_info else policy['detector']
-            st.markdown(f"- {icon} **{name}**: `{policy['env_var']}` = `{policy['current_value']}`")
-        st.markdown("Please configure these in your `.env` file")
-        st.markdown("</div>", unsafe_allow_html=True)
+            content += f"- {icon} **{name}**: `{policy['env_var']}` = `{policy['current_value']}`\n"
+        content += "\nPlease configure these in your `.env` file"
+        st.markdown(f"<div class='detector-alert detector-warning'>{content}</div>", unsafe_allow_html=True)
     
     if not detections:
-        st.markdown(f"<div class='detector-alert detector-warning'>", unsafe_allow_html=True)
-        st.markdown(f"⚠️ **No detector results available** (Selected: {total_selected})")
-        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div class='detector-alert detector-warning'>⚠️ **No detector results available** (Selected: {total_selected})</div>",
+            unsafe_allow_html=True
+        )
         return
     
     violations = [d for d in detections if d.detected]
     total_checked = len(detections)
     
     if violations:
-        st.markdown(f"<div class='detector-alert detector-danger'>", unsafe_allow_html=True)
-        st.markdown(f"**⚠️ {direction} Violations Detected: {len(violations)}/{total_checked} detectors triggered**")
+        content = f"**⚠️ {direction} Violations Detected: {len(violations)}/{total_checked} detectors triggered**\n\n"
         for detection in violations:
             detector_info = INPUT_DETECTORS.get(detection.name) or OUTPUT_DETECTORS.get(detection.name)
             icon = detector_info['icon'] if detector_info else "🚨"
             name = detector_info['name'] if detector_info else detection.name
-            st.markdown(f"- {icon} **{name}** (Score: {detection.score:.2f})")
-        st.markdown("</div>", unsafe_allow_html=True)
-    else:
-        st.markdown(f"<div class='detector-alert detector-safe'>", unsafe_allow_html=True)
-        st.markdown(f"✅ **{direction} passed all checks: 0/{total_checked} detectors triggered**")
-        st.markdown("</div>", unsafe_allow_html=True)
+            content += f"- {icon} **{name}** (Score: {detection.score:.2f})\n"
+        st.markdown(f"<div class='detector-alert detector-danger'>{content}</div>", unsafe_allow_html=True)
 
 
 def get_llm_response(messages: List[Dict]) -> str:
@@ -430,6 +491,15 @@ def render_chat_interface():
             st.markdown("**👤 You:**")
             st.markdown(content)
             
+            # Show translation info if available
+            if message.get("translated_text"):
+                st.info(f"🌐 Detected: **{message.get('source_language')}** - Analyzed translated text")
+                with st.expander("📄 View Translated Text"):
+                    st.markdown(message.get("translated_text"))
+            elif message.get("translation_error") and message.get("source_language") and message.get("source_language").lower() != "english":
+                # Only show translation error if text was detected as non-English
+                st.warning(f"⚠️ Translation warning: {message.get('translation_error')}")
+            
             # Show input detection results if available
             if "input_detections" in message:
                 total_selected = message.get("total_input_detectors", len(st.session_state.selected_input_detectors))
@@ -457,7 +527,34 @@ def render_chat_interface():
         elif role == "assistant":
             st.markdown(f"<div class='chat-message assistant-message'>", unsafe_allow_html=True)
             st.markdown("**🤖 Assistant:**")
-            st.markdown(content)
+            
+            # Check if this is a warning message about violations
+            if content.startswith("⚠️ Your message triggered guardrail violations"):
+                st.markdown(f"<div class='detector-alert detector-warning'>{content}</div>", unsafe_allow_html=True)
+            else:
+                # Extract thinking process and actual response
+                import re
+                think_pattern = r'<think>(.*?)</think>'
+                think_matches = re.findall(think_pattern, content, re.DOTALL)
+                
+                if think_matches:
+                    # Remove <think>...</think> sections from content
+                    clean_content = re.sub(think_pattern, '', content, flags=re.DOTALL).strip()
+                    
+                    # Display clean content
+                    st.markdown(clean_content)
+                    
+                    # Show thinking process in expandable section
+                    with st.expander("💭 View Thinking Process"):
+                        for i, think_content in enumerate(think_matches, 1):
+                            if len(think_matches) > 1:
+                                st.markdown(f"**Thought {i}:**")
+                            st.markdown(think_content.strip())
+                            if i < len(think_matches):
+                                st.markdown("---")
+                else:
+                    # No thinking tags, display content as-is
+                    st.markdown(content)
             
             # Show output detection results if available
             if "output_detections" in message:
@@ -491,11 +588,12 @@ def render_chat_interface():
         if not st.session_state.selected_input_detectors:
             st.warning("⚠️ No input detectors selected. Enable detectors in the sidebar.")
         
-        # Check input with guardrails
+        # Check input with guardrails (with translation if enabled)
         input_check_result = check_text_with_guardrails(
             user_input,
             Direction.INPUT,
-            st.session_state.selected_input_detectors
+            st.session_state.selected_input_detectors,
+            enable_translation=True
         )
         
         # Add user message to chat with metadata
@@ -506,7 +604,10 @@ def render_chat_interface():
             "total_input_detectors": len(st.session_state.selected_input_detectors),
             "input_check_success": input_check_result.get("success", False),
             "input_error": input_check_result.get("error"),
-            "missing_input_policies": input_check_result.get("missing_policies", [])
+            "missing_input_policies": input_check_result.get("missing_policies", []),
+            "translated_text": input_check_result.get("translated_text"),
+            "source_language": input_check_result.get("source_language"),
+            "translation_error": input_check_result.get("translation_error")
         }
         st.session_state.messages.append(user_message)
         
@@ -552,7 +653,8 @@ def render_chat_interface():
         output_check_result = check_text_with_guardrails(
             assistant_response,
             Direction.OUTPUT,
-            st.session_state.selected_output_detectors
+            st.session_state.selected_output_detectors,
+            enable_translation=False  # Don't translate output
         )
         
         # Add assistant message to chat with metadata
