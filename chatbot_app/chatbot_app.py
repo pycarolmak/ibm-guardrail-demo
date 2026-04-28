@@ -34,7 +34,8 @@ if "system_prompt" not in st.session_state:
     st.session_state.system_prompt = "You are a helpful AI assistant."
 
 if "selected_input_detectors" not in st.session_state:
-    st.session_state.selected_input_detectors = ["topic_relevance", "prompt_safety_risk", "social_bias", "hap"]
+    # st.session_state.selected_input_detectors = ["topic_relevance", "prompt_safety_risk", "social_bias", "hap"]
+    st.session_state.selected_input_detectors = ["topic_relevance", "jailbreak", "social_bias", "hap"]
 
 if "selected_output_detectors" not in st.session_state:
     st.session_state.selected_output_detectors = ["harm", "social_bias", "hap"]
@@ -62,6 +63,12 @@ if "selected_model" not in st.session_state:
 
 if "processing_response" not in st.session_state:
     st.session_state.processing_response = False
+
+if "checking_input" not in st.session_state:
+    st.session_state.checking_input = False
+
+if "checking_output" not in st.session_state:
+    st.session_state.checking_output = False
 
 
 def apply_custom_css():
@@ -177,8 +184,11 @@ def render_sidebar():
         
         # Available models
         available_models = {
+            "meta-llama/Llama-3.2-3B-Instruct:featherless-ai": "Llama 3.2 (3B)",
             # "Qwen/Qwen3.5-9B:fastest": "Qwen 3.5 (9B)",
             "Qwen/Qwen3-8B:fireworks-ai": "Qwen 3 (8B)",
+            "google/gemma-4-31B-it:novita": "Gemma 4 (31B)",
+            "baichuan-inc/Baichuan-M2-32B:featherless-ai": "Baichuan M2 (32B)",
             "deepseek-ai/DeepSeek-V4-Pro:novita": "DeepSeek V4 Pro (1.6T 49B)",
             # "deepseek-ai/DeepSeek-V4-Flash:fastest": "DeepSeek V4 Flash",
         }
@@ -498,16 +508,31 @@ def render_chat_interface():
     st.caption("Chat with AI while monitoring for policy violations")
     
     # Show current detector configuration
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
+    
     with col1:
-        input_count = len(st.session_state.selected_input_detectors)
-        st.metric("Input Detectors", input_count, help="Number of enabled input detectors")
+        st.subheader("🛡️ Input Detectors")
+        if st.session_state.selected_input_detectors:
+            detector_list = []
+            for detector_key in st.session_state.selected_input_detectors:
+                detector_info = INPUT_DETECTORS.get(detector_key)
+                if detector_info:
+                    detector_list.append(f"{detector_info['icon']} {detector_info['name']}")
+            st.markdown("<br>".join(detector_list), unsafe_allow_html=True)
+        else:
+            st.caption("_No input detectors selected_")
+    
     with col2:
-        output_count = len(st.session_state.selected_output_detectors)
-        st.metric("Output Detectors", output_count, help="Number of enabled output detectors")
-    with col3:
-        api_status = "✅ Ready" if st.session_state.hf_api_key and st.session_state.ibm_api_key else "⚠️ Missing Keys"
-        st.metric("API Status", api_status)
+        st.subheader("🔍 Output Detectors")
+        if st.session_state.selected_output_detectors:
+            detector_list = []
+            for detector_key in st.session_state.selected_output_detectors:
+                detector_info = OUTPUT_DETECTORS.get(detector_key)
+                if detector_info:
+                    detector_list.append(f"{detector_info['icon']} {detector_info['name']}")
+            st.markdown("<br>".join(detector_list), unsafe_allow_html=True)
+        else:
+            st.caption("_No output detectors selected_")
     
     st.divider()
     
@@ -530,8 +555,8 @@ def render_chat_interface():
                 # Only show translation error if text was detected as non-English
                 st.warning(f"⚠️ Translation warning: {message.get('translation_error')}")
             
-            # Show input detection results if available
-            if "input_detections" in message:
+            # Show input detection results if available and not pending
+            if "input_detections" in message and not message.get("pending_detection", False):
                 total_selected = message.get("total_input_detectors", len(st.session_state.selected_input_detectors))
                 missing_policies = message.get("missing_input_policies", [])
                 render_detection_results(message["input_detections"], "Input", total_selected, missing_policies)
@@ -586,8 +611,8 @@ def render_chat_interface():
                     # No thinking tags, display content as-is
                     st.markdown(content)
             
-            # Show output detection results if available
-            if "output_detections" in message:
+            # Show output detection results if available and not pending
+            if "output_detections" in message and not message.get("pending_detection", False):
                 total_selected = message.get("total_output_detectors", len(st.session_state.selected_output_detectors))
                 missing_policies = message.get("missing_output_policies", [])
                 render_detection_results(message["output_detections"], "Output", total_selected, missing_policies)
@@ -618,28 +643,52 @@ def render_chat_interface():
         if not st.session_state.selected_input_detectors:
             st.warning("⚠️ No input detectors selected. Enable detectors in the sidebar.")
         
-        # Check input with guardrails (with translation if enabled)
-        input_check_result = check_text_with_guardrails(
-            user_input,
-            Direction.INPUT,
-            st.session_state.selected_input_detectors,
-            enable_translation=True
-        )
-        
-        # Add user message to chat with metadata
+        # Add user message to chat immediately (without detection results yet)
         user_message = {
             "role": "user",
             "content": user_input,
-            "input_detections": input_check_result.get("detections", []),
+            "input_detections": [],
             "total_input_detectors": len(st.session_state.selected_input_detectors),
-            "input_check_success": input_check_result.get("success", False),
-            "input_error": input_check_result.get("error"),
-            "missing_input_policies": input_check_result.get("missing_policies", []),
-            "translated_text": input_check_result.get("translated_text"),
-            "source_language": input_check_result.get("source_language"),
-            "translation_error": input_check_result.get("translation_error")
+            "input_check_success": False,
+            "input_error": None,
+            "missing_input_policies": [],
+            "translated_text": None,
+            "source_language": None,
+            "translation_error": None,
+            "pending_detection": True  # Flag to indicate detection is pending
         }
         st.session_state.messages.append(user_message)
+        
+        # Set flag to check input and rerun to show user message immediately
+        st.session_state.checking_input = True
+        st.rerun()
+    
+    # Check input with guardrails if flag is set
+    if st.session_state.get("checking_input", False):
+        st.session_state.checking_input = False
+        
+        # Get the last user message
+        last_message = st.session_state.messages[-1]
+        user_input = last_message["content"]
+        
+        # Check input with guardrails (with translation if enabled)
+        with st.spinner("🔍 Detecting..."):
+            input_check_result = check_text_with_guardrails(
+                user_input,
+                Direction.INPUT,
+                st.session_state.selected_input_detectors,
+                enable_translation=True
+            )
+        
+        # Update the last message with detection results
+        last_message["input_detections"] = input_check_result.get("detections", [])
+        last_message["input_check_success"] = input_check_result.get("success", False)
+        last_message["input_error"] = input_check_result.get("error")
+        last_message["missing_input_policies"] = input_check_result.get("missing_policies", [])
+        last_message["translated_text"] = input_check_result.get("translated_text")
+        last_message["source_language"] = input_check_result.get("source_language")
+        last_message["translation_error"] = input_check_result.get("translation_error")
+        last_message["pending_detection"] = False
         
         # Show error if check failed
         if not input_check_result.get("success", False):
@@ -663,12 +712,12 @@ def render_chat_interface():
             st.session_state.messages.append(warning_message)
             st.rerun()
         
-        # Set flag to process response and rerun to show user message immediately
+        # Set flag to process response and rerun
         st.session_state.processing_response = True
         st.rerun()
     
     # Process LLM response if flag is set
-    if st.session_state.processing_response:
+    if st.session_state.get("processing_response", False):
         st.session_state.processing_response = False
         
         # Prepare messages for LLM
@@ -687,17 +736,49 @@ def render_chat_interface():
         # Validate response is not empty
         if not assistant_response or not assistant_response.strip():
             assistant_response = "Error: Received empty response from the model. Please try again."
-            output_check_result = {
-                "success": False,
-                "error": "Empty response from LLM",
-                "detections": [],
-                "missing_policies": []
+            # Add error message immediately
+            assistant_message = {
+                "role": "assistant",
+                "content": assistant_response,
+                "output_detections": [],
+                "total_output_detectors": len(st.session_state.selected_output_detectors),
+                "output_check_success": False,
+                "output_error": "Empty response from LLM",
+                "missing_output_policies": []
             }
+            st.session_state.messages.append(assistant_message)
+            st.rerun()
         else:
-            # Check output with guardrails
-            if not st.session_state.selected_output_detectors:
-                st.info("ℹ️ No output detectors selected. Response will not be checked.")
+            # Add assistant message to chat immediately (without detection results yet)
+            assistant_message = {
+                "role": "assistant",
+                "content": assistant_response,
+                "output_detections": [],
+                "total_output_detectors": len(st.session_state.selected_output_detectors),
+                "output_check_success": False,
+                "output_error": None,
+                "missing_output_policies": [],
+                "pending_detection": True  # Flag to indicate detection is pending
+            }
+            st.session_state.messages.append(assistant_message)
             
+            # Set flag to check output and rerun to show assistant message immediately
+            st.session_state.checking_output = True
+            st.rerun()
+    
+    # Check output with guardrails if flag is set
+    if st.session_state.get("checking_output", False):
+        st.session_state.checking_output = False
+        
+        # Get the last assistant message
+        last_message = st.session_state.messages[-1]
+        assistant_response = last_message["content"]
+        
+        # Check output with guardrails
+        if not st.session_state.selected_output_detectors:
+            st.info("ℹ️ No output detectors selected. Response will not be checked.")
+        
+        with st.spinner("🔍 Detecting..."):
             output_check_result = check_text_with_guardrails(
                 assistant_response,
                 Direction.OUTPUT,
@@ -705,17 +786,12 @@ def render_chat_interface():
                 enable_translation=False  # Don't translate output
             )
         
-        # Add assistant message to chat with metadata
-        assistant_message = {
-            "role": "assistant",
-            "content": assistant_response,
-            "output_detections": output_check_result.get("detections", []),
-            "total_output_detectors": len(st.session_state.selected_output_detectors),
-            "output_check_success": output_check_result.get("success", False),
-            "output_error": output_check_result.get("error"),
-            "missing_output_policies": output_check_result.get("missing_policies", [])
-        }
-        st.session_state.messages.append(assistant_message)
+        # Update the last message with detection results
+        last_message["output_detections"] = output_check_result.get("detections", [])
+        last_message["output_check_success"] = output_check_result.get("success", False)
+        last_message["output_error"] = output_check_result.get("error")
+        last_message["missing_output_policies"] = output_check_result.get("missing_policies", [])
+        last_message["pending_detection"] = False
         
         st.rerun()
 
